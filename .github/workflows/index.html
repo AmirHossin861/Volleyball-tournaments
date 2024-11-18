@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="fa" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مسابقات والیبال مدرسه</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const themeToggle = document.querySelector('#themeToggle');
+            const menuToggle = document.querySelector('#menuToggle');
+            const menu = document.querySelector('#mobileMenu');
+            const currentTheme = localStorage.getItem('theme') || 'light';
+
+            if (currentTheme === 'dark') {
+                document.documentElement.classList.add('dark');
+            }
+
+            themeToggle.addEventListener('click', () => {
+                document.documentElement.classList.toggle('dark');
+                const newTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+                localStorage.setItem('theme', newTheme);
+            });
+
+            menuToggle.addEventListener('click', () => {
+                menu.classList.toggle('hidden');
+            });
+
+            loadTournamentData();
+            loadPublicData();
+        });
+
+        // اسکریپت‌های داده‌ها
+        function loadTournamentData() {
+            const savedData = localStorage.getItem('volleyballTournament');
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                console.log( data );
+                updateMatches(data.matches);
+                console.log(data.groups);
+                updateStandings(0, data.groups, data.matches, data.results); // گروه 1
+                updateGroups(data.groups);
+            }
+        }
+
+        function updateMatches(matches) {
+            const todayMatches = matches.filter(match =>
+                new Date(match.date).toDateString() === new Date().toDateString()
+            );
+            const matchContainer = document.querySelector('#matchesContent');
+            matchContainer.innerHTML = '';
+            todayMatches.forEach(match => {
+                const matchCard = `
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span class="font-bold">${match.homeTeam}</span>
+                        <span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-1 rounded">${match.time}</span>
+                        <span class="font-bold">${match.awayTeam}</span>
+                    </div>
+                `;
+                matchContainer.innerHTML += matchCard;
+            });
+        }
+
+        function updateStandings(groupIndex, groups, matches, results) {
+            const groupTeams = groups[groupIndex];  // تیم‌های مربوط به گروه
+            let standings = groupTeams.map(team => ({
+                name: team,
+                played: 0,
+                wins: 0,
+                losses: 0,
+                setsWon: 0,
+                setsLost: 0,
+                points: 0,
+                status: ''  // وضعیت تیم (صعود کننده، حذف شده)
+            }));
+        
+            // محاسبه اطلاعات رده‌بندی بر اساس مسابقات و نتایج
+            matches.filter(match => match.group === groupIndex).forEach(match => {
+                const result = results[match.id];
+                if (!result) return;
+        
+                const homeTeamStats = standings.find(s => s.name === match.homeTeam);
+                const awayTeamStats = standings.find(s => s.name === match.awayTeam);
+        
+                if (!homeTeamStats || !awayTeamStats) {
+                    console.error(`آمار تیم‌ها برای مسابقه ${match.id} پیدا نشد.`);
+                    return;
+                }
+        
+                homeTeamStats.played++;
+                awayTeamStats.played++;
+        
+                homeTeamStats.setsWon += result.homeScore;
+                homeTeamStats.setsLost += result.awayScore;
+                awayTeamStats.setsWon += result.awayScore;
+                awayTeamStats.setsLost += result.homeScore;
+        
+                if (result.homeScore > result.awayScore) {
+                    homeTeamStats.wins++;
+                    awayTeamStats.losses++;
+                    homeTeamStats.points += 2;
+                    if (result.awayScore >= 2) {
+                        awayTeamStats.points += 1;
+                    }
+                } else {
+                    awayTeamStats.wins++;
+                    homeTeamStats.losses++;
+                    awayTeamStats.points += 2;
+                    if (result.homeScore >= 2) {
+                        homeTeamStats.points += 1;
+                    }
+                }
+            });
+        
+            // مرتب‌سازی جدول بر اساس امتیاز و تفاضل ست
+            standings.sort((a, b) => {
+                if (b.points !== a.points) return b.points - a.points;
+                const aDiff = a.setsWon - a.setsLost;
+                const bDiff = b.setsWon - b.setsLost;
+                if (bDiff !== aDiff) return bDiff - aDiff;
+                return b.setsWon - a.setsWon;
+            });
+        
+            // مشخص کردن وضعیت تیم‌ها (صعود یا حذف)
+            const topTeams = standings.slice(0, 2); // فرض کنید 2 تیم اول صعود می‌کنند
+            standings.forEach(team => {
+                if (topTeams.includes(team)) {
+                    team.status = 'qualified';  // صعود کننده
+                } else {
+                    team.status = 'eliminated';  // حذف شده
+                }
+            });
+        
+            // نمایش رده‌بندی در جدول
+            displayStandings(standings);
+        }
+        
+        // نمایش رده‌بندی در جدول با رنگ‌بندی
+        function displayStandings(standings) {
+            const tbody = document.getElementById('standingsBody');
+            tbody.innerHTML = '';
+    
+            standings.forEach((team, index) => {
+                const row = document.createElement('tr');
+                const rowClass = team.status === 'qualified' 
+                ? 'bg-green-200 dark:bg-green-700'  // برای حالت روشن و دارک
+                : team.status === 'eliminated' 
+                ? 'bg-red-200 dark:bg-red-700' // برای حالت روشن و دارک
+                : '';
+                row.className = rowClass;
+                row.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td>${team.name}</td>
+                    <td>${team.played}</td>
+                    <td>${team.wins}</td>
+                    <td>${team.losses}</td>
+                    <td>${team.setsWon}</td>
+                    <td>${team.points}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        function updateGroups(groups) {
+            const groupContainer = document.querySelector('#groupContent');
+            groupContainer.innerHTML = '';
+            groups.forEach((group, index) => {
+                const groupElement = `
+                    <div>
+                        <h3 class="font-bold text-red-600 dark:text-red-400 mb-2">گروه ${index + 1}</h3>
+                        <ul class="space-y-2">
+                            ${group.map(team => `<li class="border-b pb-1">${team}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+                groupContainer.innerHTML += groupElement;
+            });
+        }
+
+        function loadPublicData() {
+            const savedData = localStorage.getItem('volleyballTournament');
+            if (savedData) {
+                const data = JSON.parse(savedData);
+
+            // نمایش اخبار در مکان اول (publicNews) - طراحی زیباتر
+            const newsContainer = document.getElementById('publicNews');
+            newsContainer.innerHTML = ''; // پاک کردن محتوای قبلی
+            (data.news || []).forEach(item => {
+                const newsItem = `
+                    <div class="bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 transform hover:scale-105">
+                        <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                            ${new Date(item.date).toLocaleString('fa-IR')}
+                        </div>
+                        <div class="font-bold text-lg mb-2 text-red-600 dark:text-red-400">
+                            ${item.category}
+                        </div>
+                        <p class="text-gray-800 dark:text-gray-200 text-base">
+                            ${item.content}
+                        </p>
+                    </div>
+                `;
+                newsContainer.innerHTML += newsItem;
+            });
+
+                
+
+                // نمایش گالری
+                const galleryContainer = document.getElementById('publicGallery');
+                galleryContainer.innerHTML = '';
+                (data.gallery || []).forEach(item => {
+                    const imgWrapper = `
+                        <div class="relative overflow-hidden rounded-lg shadow-lg hover:shadow-xl transition-shadow duration-300">
+                            <img src="${item.src}" alt="${item.alt || 'تصویر گالری'}" 
+                                class="gallery-image w-full h-full object-cover cursor-pointer" 
+                                onclick="showImageModal('${item.src}', '${item.alt || ''}')">
+                        </div>
+                    `;
+                    galleryContainer.innerHTML += imgWrapper;
+                });
+
+                
+                const liveScoresContainer = document.getElementById('liveScores');
+                const showAllMatchesButton = document.getElementById('showAllMatches');
+                const showLastMatchButton = document.getElementById('showLastMatch');
+                
+                // تابع برای نمایش آخرین مسابقه
+                function showLastMatch() {
+                    liveScoresContainer.innerHTML = '';  // پاک کردن محتوای قبلی
+                
+                    // همیشه آخرین مسابقه را نمایش بده
+                    const lastMatch = (data.matchResults || []).slice(-1)[0];
+                    if (lastMatch) {
+                        const scoreItem = document.createElement('div');
+                        const matchStatusClass = lastMatch.finished ? '' : 'live';  // اگر مسابقه پایان یافته است، کلاس 'live' حذف می‌شود.
+                        const matchStatusText = lastMatch.finished ? 'پایان یافته' : 'در حال برگزاری';
+                        const matchStatusColor = lastMatch.finished ? 'darkcyan' : 'darkred';
+                        scoreItem.className = 'live-score-item';
+                        scoreItem.innerHTML = `
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name">${lastMatch.team1}</span>
+                                    <span class="team-score">${lastMatch.team1Score}</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score">${lastMatch.team2Score}</span>
+                                    <span class="team-name">${lastMatch.team2}</span>
+                                </div>
+                                <div class="match-status score ${matchStatusClass}" style="color: ${matchStatusColor};">
+                                    ${matchStatusText}
+                                </div>
+                            </div>
+                        `;
+                        liveScoresContainer.appendChild(scoreItem);
+                    }
+                    // تغییر متن دکمه‌ها
+                showAllMatchesButton.style.display = 'inline-block';
+                showLastMatchButton.style.display = 'none';
+                }
+                
+                // تابع برای نمایش تمام مسابقات
+                function showAllMatches() {
+                    liveScoresContainer.innerHTML = '';  // پاک کردن محتوای قبلی
+                
+                    // نمایش تمام مسابقات
+                    (data.matchResults || []).forEach(match => {
+                        const matchStatusClass = match.finished ? '' : 'live';  // اگر مسابقه پایان یافته است، کلاس 'live' حذف می‌شود.
+                        const matchStatusText = match.finished ? 'پایان یافته' : 'در حال برگزاری';
+                        const matchStatusColor = match.finished ? 'darkcyan' : 'darkred';
+                        const scoreItem = document.createElement('div');
+                        scoreItem.className = 'live-score-item';
+                        scoreItem.innerHTML = `
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name">${match.team1}</span>
+                                    <span class="team-score">${match.team1Score}</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score">${match.team2Score}</span>
+                                    <span class="team-name">${match.team2}</span>
+                                </div>
+                                <div class="match-status score ${matchStatusClass}" style="color: ${matchStatusColor};">
+                                    ${matchStatusText}
+                                </div>
+                            </div>
+                        `;
+                        liveScoresContainer.appendChild(scoreItem);
+                    });
+                     // تغییر متن دکمه‌ها
+                    showAllMatchesButton.style.display = 'none';
+                    showLastMatchButton.style.display = 'inline-block';
+                }
+                
+                // اعمال رویدادها به دکمه‌ها
+                showLastMatchButton.addEventListener('click', showLastMatch);
+                showAllMatchesButton.addEventListener('click', showAllMatches);
+                
+                // نمایش آخرین مسابقه به صورت پیش‌فرض
+                showLastMatch();
+                
+                
+                // نمایش آمار بازیکنان
+                const statsContainer = document.getElementById('publicPlayerStats');
+                statsContainer.innerHTML = '';
+                (data.playerStats || []).forEach(item => {
+                    const statsItem = `
+                    <div class="relative bg-gray-100 dark:bg-gray-900 rounded-lg shadow-lg p-4 overflow-hidden group hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors duration-300">
+                        <div class="absolute top-0 right-0 bg-red-600 text-white text-xs px-2 py-1 rounded-bl-lg">
+                            ${item.role || 'بازیکن'}
+                            </div>
+                            <h3 class="text-lg font-bold mb-2">${item.playerName ? item.playerName : 'نام بازیکن '}</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-300">${item.stats}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">${new Date(item.date).toLocaleString('fa-IR')}</p>
+                            <button class="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+                                مشاهده جزئیات
+                            </button>
+                        </div>
+                        `;
+                        statsContainer.innerHTML += statsItem;
+                    });
+                }
+            }
+            window.showImageModal = function (src, alt) {
+                const modal = document.getElementById('imageModal');
+                const modalImage = document.getElementById('modalImage');
+            
+                modalImage.src = src;
+                modalImage.alt = alt;
+                modal.classList.remove('hidden');
+                modalImage.classList.add('scale-95'); // شروع انیمیشن
+                setTimeout(() => modalImage.classList.remove('scale-95'), 50); // پایان انیمیشن
+                // بستن مدال
+                document.getElementById('closeModal').addEventListener('click', () => {
+                    const modal = document.getElementById('imageModal');
+                    modal.classList.add('hidden');
+                });
+            };
+            function showGroupStandings(groupIndex) {
+                // انتخاب دکمه‌های تب
+                const group1Tab = document.getElementById('group1Tab');
+                const group2Tab = document.getElementById('group2Tab');
+        
+                // حذف کلاس‌های فعال قبلی
+        group1Tab.classList.remove('bg-gradient-to-r', 'from-red-700', 'via-red-800', 'to-red-900', 'dark:from-red-900', 'dark:via-red-800', 'dark:to-red-700', 'text-white');
+        group2Tab.classList.remove('bg-gradient-to-r', 'from-red-700', 'via-red-800', 'to-red-900', 'dark:from-red-900', 'dark:via-red-800', 'dark:to-red-700', 'text-white');
+
+        // اضافه کردن کلاس‌های گرادیانت به تب انتخاب‌شده
+        if (groupIndex === 0) {
+            group1Tab.classList.add('bg-gradient-to-r', 'from-red-700', 'via-red-800', 'to-red-900', 'dark:from-red-900', 'dark:via-red-800', 'dark:to-red-700', 'text-white');
+            group2Tab.classList.add('bg-white', 'dark:bg-gray-700');
+        } else {
+            group2Tab.classList.add('bg-gradient-to-r', 'from-red-700', 'via-red-800', 'to-red-900', 'dark:from-red-900', 'dark:via-red-800', 'dark:to-red-700', 'text-white');
+            group1Tab.classList.add('bg-white', 'dark:bg-gray-700');
+        }
+        
+                // بارگذاری و نمایش رده‌بندی برای گروه انتخاب‌شده
+                const savedData = localStorage.getItem('volleyballTournament');
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    updateStandings(groupIndex, data.groups, data.matches, data.results);
+                }
+            }
+            document.addEventListener("scroll", () => {
+                const header = document.querySelector("header");
+                if (window.scrollY > 0) {
+                    header.classList.add("header-transparent");
+                    header.classList.remove("from-red-700",".via-red-800",".to-red-900");
+                } else {
+                    header.classList.add("from-red-700",".via-red-800",".to-red-900");
+                    header.classList.remove("header-transparent");
+                }
+            });
+            
+        </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap');
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+        }
+        :root {
+            --primary-color: #d41a1a;
+            --secondary-color: #2f2f2f;
+            --background-color: #f4f4f4;
+        }
+        .tab-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .tab-button {
+            transition: background-color 0.3s ease;
+        }
+        .news-card {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .news-header {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 10px 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .news-content {
+            padding: 15px;
+        }
+        
+        .standings {
+            width: 100%;
+            border-collapse:separate;
+            table-layout: fixed;
+            font-weight: bold;
+        }
+        
+        .standings th, .standings td {
+            padding: 8px;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .standings th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+        }
+
+        .standings tr:nth-child(1) td {
+            background-color: rgba(46, 204, 113, 0.1);
+        }
+        
+        .standings td.bg-green-200 {
+            background-color: #a7f3d0; /* سبز روشن برای تیم‌های صعودکننده */
+        }
+        
+        .standings td.bg-red-200 {
+            background-color: #fecaca; /* قرمز روشن برای تیم‌های حذف شده */
+        }
+        
+        .standings td.bg-gray-200 {
+            background-color: #e5e5e5; /* خاکی برای تیم‌های دیگر */
+        }
+        .dark\:news-card {
+            background: #1f2937; /* پس‌زمینه تیره برای کارت */
+            box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
+        }
+        .score {
+            background-color: #f8f8f8;
+            padding: 5px 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .live {
+            color: var(--primary-color);
+            animation: blink 1s infinite;
+            background-color: #feb1b1;
+        }
+        @keyframes blink {
+            50% { opacity: 0.5; }
+        }
+       /* حالت دارک */
+.dark .news-card {
+    background: #1f2937; /* پس‌زمینه تیره برای کارت */
+    box-shadow: 0 2px 4px rgba(255, 255, 255, 0.1);
+}
+
+.dark .news-header {
+    background-color: #374151; /* پس‌زمینه تیره برای عنوان */
+    color: white;
+}
+
+.dark .news-content {
+    padding: 15px;
+    background-color: #2d3748; /* پس‌زمینه تیره برای محتوا */
+}
+
+.dark .standings {
+    color: white; /* رنگ متن در حالت دارک */
+}
+
+.dark .standings th {
+    background-color: #4b5563; /* پس‌زمینه تیره برای عنوان‌ها */
+    color: white;
+}
+
+.dark .standings td {
+    background-color: #1f2937; /* پس‌زمینه تیره برای ردیف‌ها */
+}
+
+.dark .standings tr:nth-child(even) {
+    background-color: #2d3748; /* پس‌زمینه تیره‌تر برای ردیف‌های زوج */
+}
+
+.dark .standings tr:hover {
+    background-color: #4b5563; /* پس‌زمینه تیره‌تر در حالت انتخاب */
+}
+
+.dark .standings td.bg-green-200 {
+    background-color: #22c55e; /* سبز روشن‌تر برای صعودکنندگان در دارک مود */
+}
+
+.dark .standings td.bg-red-200 {
+    background-color: #f87171; /* قرمز روشن‌تر برای حذف‌شده‌ها در دارک مود */
+}
+.standings td.bg-green-200 {
+    background-color: #a7f3d0; /* سبز روشن برای تیم‌های صعودکننده */
+}
+
+.standings td.bg-red-200 {
+    background-color: #fecaca; /* قرمز روشن برای تیم‌های حذف شده */
+}
+
+.dark .standings td.bg-gray-200 {
+    background-color: #4b5563; /* خاکی تیره‌تر برای تیم‌های دیگر */
+}
+.header-transparent {
+    background-color: rgba(128, 0, 0, 0.8) !important; /* حالت شفاف برای پس‌زمینه */
+    transition: background-color 0.3s ease-in-out; /* برای انیمیشن */
+}
+    .score-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        background: linear-gradient(to bottom right, #fff, #ffd6d6);
+        box-shadow: 0 4px 8px rgb(192 16 16 / 52%);
+        border-radius: 12px;
+        padding: 10px;
+        margin-bottom: 5px;
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+
+.score-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(to bottom right,#ffd6d6 ,  #fff);
+
+}
+
+.score-teams {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.team-name {
+    font-size: 1.2em;
+    font-weight: bold;
+    color: #333;
+}
+
+.team-score {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: #0066cc;
+}
+
+.vs {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #999;
+}
+
+.match-status {
+    font-size: 0.9em;
+    margin-top: 10px;
+    text-align: center;
+}
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-red-700 via-red-800 to-red-900 dark:from-red-900 dark:via-red-800 dark:to-red-700 text-white sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto flex justify-between items-center py-4 px-6">
+            <div class="text-lg font-bold sm:text-2xl"><img src="volleyball_5496293.png" alt="توپ والیبال" style="width: 25px;display: inline-block;"> مسابقات والیبال هنرستان نمونه البرز</div>
+            <div class="hidden md:flex gap-4">
+                <a href="#matches" class="hover:bg-red-600 dark:hover:bg-red-500 rounded px-3 py-2">نتایج مسابقات</a>
+                <a href="#standings" class="hover:bg-red-600 dark:hover:bg-red-500 rounded px-3 py-2">جدول رده‌بندی</a>
+                <a href="#groups" class="hover:bg-red-600 dark:hover:bg-red-500 rounded px-3 py-2">گروه‌بندی</a>
+                <a href="#news" class="hover:bg-red-600 dark:hover:bg-red-500 rounded px-3 py-2">اخبار</a>
+            </div>
+            <button id="menuToggle" class="md:hidden text-2xl">☰</button>
+            <button id="themeToggle" class="text-xl bg-white dark:bg-gray-800 text-gray-800 dark:text-white rounded-full p-2 shadow">
+                🌙
+            </button>
+        </div>
+        <nav id="mobileMenu" class="md:hidden bg-red-800 dark:bg-red-900 text-white hidden">
+            <a href="#matches" class="block py-2 px-4 hover:bg-red-700">نتایج مسابقات</a>
+            <a href="#standings" class="block py-2 px-4 hover:bg-red-700">جدول رده‌بندی</a>
+            <a href="#groups" class="block py-2 px-4 hover:bg-red-700">گروه‌بندی</a>
+            <a href="#news" class="block py-2 px-4 hover:bg-red-700">اخبار</a>
+        </nav>
+    </header>
+
+    <!-- Container -->
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 px-4">
+        <!-- Sidebar -->
+        <aside class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6" style="display: none;">
+            <!-- مسابقات امروز -->
+            <div>
+                <h2 class="text-xl font-bold mb-4">مسابقات امروز</h2>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span class="font-bold">تیم الف</span>
+                        <span class="bg-red-100 dark:bg-red-700 text-red-700 dark:text-red-100 px-3 py-1 rounded animate-pulse">
+                            در حال برگزاری
+                        </span>
+                        <span class="font-bold">تیم ب</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold">تیم ج</span>
+                        <span class="text-sm text-gray-600">16:00</span>
+                        <span class="font-bold">تیم د</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- گروه‌بندی -->
+            <div>
+                <h2 class="text-xl font-bold mb-4">گروه‌بندی</h2>
+                <div>
+                    <h3 class="font-bold text-red-600 dark:text-red-400 mb-2">گروه A</h3>
+                    <ul class="space-y-2">
+                        <li class="border-b pb-1">تیم الف</li>
+                        <li class="border-b pb-1">تیم ب</li>
+                        <li class="border-b pb-1">تیم ج</li>
+                        <li class="border-b pb-1">تیم د</li>
+                    </ul>
+                </div>
+            </div>
+        </aside>
+         <!-- Main Content -->
+         <main class="col-span-2 space-y-6">
+            <!-- پیام خوشامد -->
+            <div class="bg-yellow-100 dark:bg-yellow-800 text-yellow-700 dark:text-yellow-200 p-4 rounded shadow">
+                🏐 به صفحه رسمی مسابقات والیبال مدرسه خوش آمدید
+            </div>
+
+            <!-- امتیازات زنده -->
+            <div class="news-card">
+                <h2 class="text-xl font-bold mb-4 news-header">امتیازات زنده</h2>
+                <div class="space-y-4 news-content"  style="padding: 0px 15px 15px 15px;max-height: 300px;overflow-y: auto;">
+                    <div class="flex space-x-4 mb-4">
+                    <button id="showLastMatch" class="tab-button px-4 py-2 bg-gradient-to-r from-red-700 via-red-800 to-red-900 dark:from-red-900 dark:via-red-800 dark:to-red-700 text-white rounded-md" style="font-size: 10px;">نمایش آخرین مسابقه</button>
+                    <button id="showAllMatches" class="tab-button px-4 py-2 bg-gradient-to-r from-red-700 via-red-800 to-red-900 dark:from-red-900 dark:via-red-800 dark:to-red-700 text-white rounded-md" style="font-size: 10px;">نمایش تمام مسابقات</button>
+                    </div>
+                    <div id="liveScores" class="space-y-4" style="margin-top: 10px;">
+                        <div class="live-score-item">
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name" style="color: #ffefef;BACKGROUND-COLOR: brown;PADDING: 3PX;BORDER-RADIUS: 10PX;">101</span>
+                                    <span class="team-score">15</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score">8</span>
+                                    <span class="team-name">301</span>
+                                </div>
+                                <P style="COLOR: DARKRED;FONT-WEIGHT: BOLD;">ست دوم</P>
+                                <div class="match-status score " style="color: darkcyan;">
+                                    پایان یافته
+                                </div>
+                            </div>
+                        </div>
+                        <div class="live-score-item">
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name" style="color: #ffefef;BACKGROUND-COLOR: brown;PADDING: 3PX;BORDER-RADIUS: 10PX;">101</span>
+                                    <span class="team-score">15</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score">7</span>
+                                    <span class="team-name">301</span>
+                                </div>
+                                <P style="COLOR: DARKRED;FONT-WEIGHT: BOLD;">ست اول</P>
+                                <div class="match-status score " style="color: darkcyan;">
+                                    پایان یافته
+                                </div>
+                            </div>
+                        </div>
+                        <div class="live-score-item">
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name" style="color: #ffefef;BACKGROUND-COLOR: brown;PADDING: 3PX;BORDER-RADIUS: 10PX;">303</span>
+                                    <span class="team-score">15</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score">11</span>
+                                    <span class="team-name">101</span>
+                                </div>
+                                <P style="COLOR: DARKRED;FONT-WEIGHT: BOLD;">ست سوم</P>
+                                <div class="match-status score " style="color: darkcyan;">
+                                    پایان یافته
+                                </div>
+                            </div>
+                        </div>
+                        <div class="live-score-item">
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name" style="color: #ffefef;BACKGROUND-COLOR: brown;PADDING: 3PX;BORDER-RADIUS: 10PX;">303</span>
+                                    <span class="team-score">15</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score">12</span>
+                                    <span class="team-name">101</span>
+                                </div>
+                                <P style="COLOR: DARKRED;FONT-WEIGHT: BOLD;">ست دوم</P>
+                                <div class="match-status score " style="color: darkcyan;">
+                                    پایان یافته
+                                </div>
+                            </div>
+                        </div>
+                        <div class="live-score-item">
+                            <div class="score-card">
+                                <div class="score-teams">
+                                    <span class="team-name">303</span>
+                                    <span class="team-score">14</span>
+                                    <span class="vs">VS</span>
+                                    <span class="team-score" style="color: #ffefef;BACKGROUND-COLOR: brown;PADDING: 3PX;BORDER-RADIUS: 10PX;font-size:19px;">101</span>
+                                    <span class="team-name">16</span>
+                                </div>
+                                <P style="COLOR: DARKRED;FONT-WEIGHT: BOLD;">ست اول</P>
+                                <div class="match-status score " style="color: darkcyan;">
+                                    پایان یافته
+                                </div>
+                            </div>
+                        </div>
+                         
+                    </div>
+                </div>
+            </div>
+
+            <!-- نتایج آخرین مسابقات -->
+            <div class="news-card">
+                <h2 class="text-xl font-bold mb-4 news-header">نتایج آخرین مسابقات</h2>
+                <div class="space-y-4 news-content">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span class="font-bold">تیم 301</span>
+                        <span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-1 rounded">0 - 2</span>
+                        <span class="font-bold" style="color: #ffffff;BACKGROUND-COLOR: #4f4747;PADDING: 3PX;BORDER-RADIUS: 10PX;">تیم 101</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold">تیم 101</span>
+                        <span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-1 rounded">1 - 2</span>
+                        <span class="font-bold" style="color: #ffffff;BACKGROUND-COLOR: #4f4747;PADDING: 3PX;BORDER-RADIUS: 10PX;">تیم 303</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="news-card" id="standings">
+                <div class="news-header">جدول رده‌بندی</div>
+                <div class="news-content">
+                    <!-- تب‌ها -->
+                <div class="flex space-x-4 mb-4">
+                    <button id="group1Tab" class="tab-button px-4 py-2 bg-gradient-to-r from-red-700 via-red-800 to-red-900 dark:from-red-900 dark:via-red-800 dark:to-red-700 text-white rounded-md" onclick="showGroupStandings(0)">گروه 1</button>
+                </div>
+                <table class="standings">
+                    <thead>
+                        <tr>
+                            <th>رتبه</th>
+                            <th>تیم</th>
+                            <th>بازی</th>
+                            <th>برد</th>
+                            <th>باخت</th>
+                            <th>ست</th>
+                            <th>امتیاز</th>
+                        </tr>
+                    </thead>
+                    <tbody id="standingsBody"><tr class="bg-green-200 dark:bg-green-700">
+                <td>1</td>
+                <td>101</td>
+                <td>2</td>
+                <td>1</td>
+                <td>1</td>
+                <td>3</td>
+                <td>2</td>
+            </tr><tr class="bg-green-200 dark:bg-green-700">
+                <td>2</td>
+                <td>303</td>
+                <td>1</td>
+                <td>1</td>
+                <td>0</td>
+                <td>2</td>
+                <td>2</td>
+            </tr><tr class="bg-red-200 dark:bg-red-700">
+                <td>3</td>
+                <td>102</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+            </tr><tr class="bg-red-200 dark:bg-red-700">
+                <td>4</td>
+                <td>301</td>
+                <td>1</td>
+                <td>0</td>
+                <td>1</td>
+                <td>0</td>
+                <td>0</td>
+            </tr></tbody>
+                </table>
+                <button id="group1Tab" class="tab-button px-4 py-2 my-2 bg-gradient-to-r from-red-700 via-red-800 to-red-900 dark:from-red-900 dark:via-red-800 dark:to-red-700 text-white rounded-md" onclick="showGroupStandings(0)">گروه 2</button>
+
+                <table class="standings">
+                    <thead>
+                        <tr>
+                            <th>رتبه</th>
+                            <th>تیم</th>
+                            <th>بازی</th>
+                            <th>برد</th>
+                            <th>باخت</th>
+                            <th>ست</th>
+                            <th>امتیاز</th>
+                        </tr>
+                    </thead>
+                    <tbody id="standingsBody"><tr class="bg-green-200 dark:bg-green-700">
+                <td>1</td>
+                <td>302</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+            </tr><tr class="bg-green-200 dark:bg-green-700">
+                <td>2</td>
+                <td>203</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+            </tr><tr class="bg-red-200 dark:bg-red-700">
+                <td>3</td>
+                <td>103</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+                <td>0</td>
+            </tr></tbody>
+                </table>
+                </div>
+            </div>
+            
+            <section class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
+                <!-- گالری -->
+                <section class="space-y-6 news-card">
+                    <h2 class="text-xl font-bold mb-4 news-header">گالری تصاویر</h2>
+                    <div id="publicGallery" class="grid grid-cols-2 md:grid-cols-4 gap-4 news-content">
+                        <!-- تصاویر گالری به‌صورت پویا اضافه می‌شوند -->
+                    </div>
+                
+                    <!-- مدال تصویر بزرگ‌شده -->
+                    <div id="imageModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center hidden z-50">
+                        <div class="relative">
+                            <img id="modalImage" class="max-w-full max-h-screen rounded-lg shadow-lg transition-transform duration-300">
+                            <button id="closeModal" class="absolute top-2 right-2 bg-red-600 text-white rounded-full p-2 text-xl hover:bg-red-700">
+                                &times;
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                
+            
+                <!-- آمار بازیکنان -->
+                <div class="news-card">
+                    <h2 class="text-xl font-bold mb-4 news-header">آمار بازیکنان</h2>
+                    <div id="publicPlayerStats" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 news-content">
+                        <!-- کارت‌های بازیکنان پویا اضافه می‌شوند -->
+                    </div>
+                </div>
+              
+            </section>
+            
+        </main>
+        <aside class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
+            <!-- مسابقات امروز -->
+            <div class="news-card">
+                <h2 class="text-xl font-bold mb-4 news-header">مسابقات امروز</h2>
+                <div id="matchesContent" class="space-y-4 news-content">
+                    <!-- اینجا اطلاعات مسابقات به‌صورت پویا اضافه می‌شود -->
+                    <div id="matchesContent" class="space-y-4 news-content">
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-bold">101</span>
+                            <span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-1 rounded">10:35</span>
+                            <span class="font-bold">301</span>
+                        </div>
+                    
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-bold">303</span>
+                            <span class="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-1 rounded">12:15</span>
+                            <span class="font-bold">102</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+              <!-- اخبار -->
+            <div class="news-card">
+                <h2 class="text-xl font-bold mb-4 news-header ">اخبار مسابقات</h2>
+                <div id="publicNews" class="space-y-4 news-content">
+                    <!-- اینجا اخبار به‌صورت پویا اضافه می‌شود -->
+                    <div class="bg-gray-100 dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow duration-300 transform hover:scale-105">
+                        <div class="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                            ۱۴۰۳/۸/۲۵, ۲۳:۵۳:۵۰
+                        </div>
+                        <div class="font-bold text-lg mb-2 text-red-600 dark:text-red-400">
+                            مسابقات
+                        </div>
+                        <p class="text-gray-800 dark:text-gray-200 text-base">
+                            افتتاحیه مسابقات از روز شنبه آغاز می شود
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="news-card">
+                <h2 class="text-xl font-bold mb-4 news-header">گروه‌بندی</h2>
+                <div id="groupContent" class="space-y-4 news-content">
+                    <div>
+                        <h3 class="font-bold text-red-600 dark:text-red-400 mb-2">گروه 1</h3>
+                        <ul class="space-y-2">
+                            <li class="border-b pb-1">101</li><li class="border-b pb-1">303</li><li class="border-b pb-1">301</li><li class="border-b pb-1">102</li>
+                        </ul>
+                    </div>
+                
+                    <div>
+                        <h3 class="font-bold text-red-600 dark:text-red-400 mb-2">گروه 2</h3>
+                        <ul class="space-y-2">
+                            <li class="border-b pb-1">302</li><li class="border-b pb-1">203</li><li class="border-b pb-1">103</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        
+            
+        </aside>
+         
+       
+
+        
+    </div>
+</body>
+</html>
